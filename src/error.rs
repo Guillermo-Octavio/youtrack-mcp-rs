@@ -8,7 +8,10 @@
 
 use std::time::Duration;
 
+use serde::Serialize;
 use thiserror::Error;
+
+use crate::payload::Render;
 
 /// Failure modes surfaced by the YouTrack HTTP client and REST API.
 #[derive(Debug, Error)]
@@ -63,7 +66,7 @@ pub enum YouTrackError {
 /// `code` is a stable machine-readable identifier an MCP client can
 /// branch on; `hint` is an optional human-readable suggestion for the
 /// caller's next step.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ToolError {
     pub code: &'static str,
     pub message: String,
@@ -76,6 +79,15 @@ impl ToolError {
             code,
             message,
             hint,
+        }
+    }
+}
+
+impl Render for ToolError {
+    fn render(&self) -> String {
+        match &self.hint {
+            Some(hint) => format!("[{}] {} ({hint})", self.code, self.message),
+            None => format!("[{}] {}", self.code, self.message),
         }
     }
 }
@@ -264,5 +276,34 @@ mod tests {
 
         assert_eq!(tool_error.code, "decode");
         assert!(tool_error.hint.unwrap().contains("/api/issues"));
+    }
+
+    #[test]
+    fn render_includes_code_message_and_hint_when_hint_present() {
+        let tool_error = ToolError {
+            code: "not_found",
+            message: "issue not found: DEMO-1".to_string(),
+            hint: Some("Try a search tool to find the correct id.".to_string()),
+        };
+
+        let rendered = tool_error.render();
+
+        assert_eq!(
+            rendered,
+            "[not_found] issue not found: DEMO-1 (Try a search tool to find the correct id.)"
+        );
+    }
+
+    #[test]
+    fn render_omits_hint_parens_when_hint_absent() {
+        let tool_error = ToolError {
+            code: "validation",
+            message: "request body was malformed".to_string(),
+            hint: None,
+        };
+
+        let rendered = tool_error.render();
+
+        assert_eq!(rendered, "[validation] request body was malformed");
     }
 }
