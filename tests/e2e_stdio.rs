@@ -7,8 +7,24 @@
 //! `tools/list` call. This proves the server is reachable over the MCP
 //! protocol and exposes exactly the 34 tools this phase registers.
 
+use std::sync::Arc;
+
 use rmcp::{model::ClientInfo, ServiceExt};
+use url::Url;
+use youtrack_mcp_rs::client::YouTrackClient;
+use youtrack_mcp_rs::config::Config;
 use youtrack_mcp_rs::tools::ToolServer;
+
+/// Builds a [`ToolServer`] with a client pointed at a placeholder URL.
+/// Neither test below exercises a real YouTrack REST call, so this never
+/// needs to reach a real (or mock) server.
+fn test_server() -> ToolServer {
+    let config = Config {
+        youtrack_url: Url::parse("https://example.myjetbrains.com").unwrap(),
+        youtrack_token: "test-token".to_string(),
+    };
+    ToolServer::new(Arc::new(YouTrackClient::new(&config).unwrap()))
+}
 
 const EXPECTED_TOOL_NAMES: &[&str] = &[
     "search_issues",
@@ -52,7 +68,7 @@ async fn stdio_transport_exposes_exactly_the_34_registered_tools() {
     let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
 
     let server_task = tokio::spawn(async move {
-        ToolServer::new()
+        test_server()
             .serve(server_transport)
             .await
             .expect("server should accept the in-process transport")
@@ -94,7 +110,7 @@ async fn calling_a_stub_tool_returns_a_not_implemented_error() {
     let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
 
     let server_task = tokio::spawn(async move {
-        ToolServer::new()
+        test_server()
             .serve(server_transport)
             .await
             .expect("server should accept the in-process transport")
@@ -108,12 +124,14 @@ async fn calling_a_stub_tool_returns_a_not_implemented_error() {
         .await
         .expect("client should complete the MCP initialize handshake");
 
-    let arguments = serde_json::json!({ "issue_id": "DEMO-1" })
+    let arguments = serde_json::json!({ "project_id": "DEMO", "summary": "New issue" })
         .as_object()
         .unwrap()
         .clone();
     let result = client
-        .call_tool(rmcp::model::CallToolRequestParams::new("get_issue").with_arguments(arguments))
+        .call_tool(
+            rmcp::model::CallToolRequestParams::new("create_issue").with_arguments(arguments),
+        )
         .await
         .expect("call_tool should return a tool-level result, not a protocol error");
 
@@ -130,7 +148,7 @@ async fn calling_a_stub_tool_returns_a_not_implemented_error() {
         structured["message"]
             .as_str()
             .unwrap()
-            .contains("get_issue"),
+            .contains("create_issue"),
         "the error message must name the specific tool that is not implemented"
     );
 

@@ -22,23 +22,35 @@ mod metadata;
 mod time;
 mod users;
 
+use std::sync::Arc;
+
 use rmcp::{
     handler::server::router::tool::ToolRouter,
     model::{CallToolResult, ContentBlock},
     tool_handler, ServerHandler,
 };
+use serde::Serialize;
 
-use crate::{error::ToolError, payload::ToolPayload};
+use crate::{
+    client::page::Cursor, client::YouTrackClient, error::ToolError, payload::Render,
+    payload::ToolPayload,
+};
+
+/// Default page size for a paginated list tool when the caller does not
+/// pass an explicit `limit`.
+pub(crate) const DEFAULT_LIMIT: usize = 50;
 
 /// Aggregate MCP server exposing every YouTrack MCP tool.
 #[derive(Debug, Clone)]
 pub struct ToolServer {
     tool_router: ToolRouter<Self>,
+    client: Arc<YouTrackClient>,
 }
 
 impl ToolServer {
-    /// Builds the server with every domain's tools registered.
-    pub fn new() -> Self {
+    /// Builds the server with every domain's tools registered, sharing
+    /// one [`YouTrackClient`] across every domain's REST calls.
+    pub fn new(client: Arc<YouTrackClient>) -> Self {
         Self {
             tool_router: activity::router()
                 + agile::router()
@@ -50,13 +62,8 @@ impl ToolServer {
                 + metadata::router()
                 + time::router()
                 + users::router(),
+            client,
         }
-    }
-}
-
-impl Default for ToolServer {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -75,28 +82,69 @@ impl ServerHandler for ToolServer {}
 /// every stub tool reports failures the same actionable way real tools
 /// will in later phases.
 pub(crate) fn stub_result(tool_name: &'static str) -> CallToolResult {
-    let error = ToolError {
+    tool_error_result(ToolError {
         code: "not_implemented",
         message: format!("`{tool_name}` is not implemented yet."),
         hint: Some(
             "Domain logic for this tool lands in a later phase of the rust-rewrite change."
                 .to_string(),
         ),
-    };
-    let payload = ToolPayload::from_value(&error).expect("ToolError always serializes to JSON");
+    })
+}
 
+/// Builds a successful [`CallToolResult`] pairing `value`'s rendered text
+/// with its structured JSON form, for a tool that completed a real
+/// YouTrack REST call.
+pub(crate) fn tool_ok_result<T: Serialize + Render>(value: &T) -> CallToolResult {
+    let payload = ToolPayload::from_value(value).expect("tool result always serializes to JSON");
+    let mut result = CallToolResult::success(vec![ContentBlock::text(payload.text)]);
+    result.structured_content = Some(payload.json);
+    result
+}
+
+/// Builds an error [`CallToolResult`] from a [`ToolError`], the shape
+/// every real tool handler returns when a YouTrack REST call fails.
+pub(crate) fn tool_error_result(error: ToolError) -> CallToolResult {
+    let payload = ToolPayload::from_value(&error).expect("ToolError always serializes to JSON");
     let mut result = CallToolResult::error(vec![ContentBlock::text(payload.text)]);
     result.structured_content = Some(payload.json);
     result
 }
 
+/// Decodes an optional pagination cursor into the `skip` offset it
+/// encodes, defaulting to `0` when no cursor was passed. Returns a
+/// [`ToolError`] when `cursor` does not decode to a valid [`Cursor`].
+pub(crate) fn cursor_skip(cursor: Option<&str>) -> Result<usize, ToolError> {
+    match cursor {
+        None => Ok(0),
+        Some(raw) => Cursor::decode(raw).map(|cursor| cursor.skip).map_err(|_| ToolError {
+            code: "validation",
+            message: "invalid pagination cursor".to_string(),
+            hint: Some(
+                "Pass the exact cursor a previous call returned, or omit it to start from the first page."
+                    .to_string(),
+            ),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use url::Url;
+
+    pub(crate) fn test_client() -> Arc<YouTrackClient> {
+        let config = Config {
+            youtrack_url: Url::parse("https://example.myjetbrains.com").unwrap(),
+            youtrack_token: "test-token".to_string(),
+        };
+        Arc::new(YouTrackClient::new(&config).unwrap())
+    }
 
     #[test]
     fn tool_server_registers_exactly_34_tools() {
-        let server = ToolServer::new();
+        let server = ToolServer::new(test_client());
 
         assert_eq!(server.tool_router.list_all().len(), 34);
     }
