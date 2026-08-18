@@ -4,6 +4,7 @@
 //! logic (tools, transport) lands in later phases of the SDD change
 //! `rust-rewrite`.
 
+pub mod client;
 pub mod error;
 pub mod payload;
 
