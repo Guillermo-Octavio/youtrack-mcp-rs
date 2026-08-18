@@ -11,7 +11,7 @@ use base64::Engine as _;
 use thiserror::Error;
 
 /// A page of results returned by a list-style tool.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Page<T> {
     pub items: Vec<T>,
     pub has_more: bool,
