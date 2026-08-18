@@ -9,7 +9,9 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod payload;
+pub mod render;
 pub mod tools;
+pub mod youtrack;
 
 /// Canonical name of the MCP server binary, used for identification
 /// in MCP `initialize` responses and end-to-end tests.
