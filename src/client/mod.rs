@@ -7,14 +7,20 @@
 //! create article, and similar) are added alongside the tools that
 //! need them in later phases of the SDD change `rust-rewrite`.
 
+pub mod agile;
+pub mod issues;
 pub mod page;
+pub mod projects;
 pub mod resolve;
 
 use std::time::Duration;
 
 use reqwest::{Client, Method, RequestBuilder};
+use serde::de::DeserializeOwned;
 
 use crate::config::Config;
+use crate::error::YouTrackError;
+use page::{paginate, Page};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -51,6 +57,91 @@ impl YouTrackClient {
             .request(method, url)
             .bearer_auth(&self.token)
             .header("Accept", "application/json")
+    }
+
+    /// Exposes this client's shared [`reqwest::Client`], e.g. so the
+    /// startup connectivity probe (`Config::validate`) can reuse it
+    /// instead of building a second one.
+    pub fn http_client(&self) -> &Client {
+        &self.http
+    }
+
+    /// Sends a `GET` request to `path` with `query` and deserializes a
+    /// successful JSON response as `T`, mapping non-success statuses to
+    /// [`YouTrackError`]. `not_found` names the resource/id to report
+    /// when the API returns `404`; pass `None` when a `404` should be
+    /// reported as a generic API error instead.
+    pub(crate) async fn get_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        not_found: Option<(&str, &str)>,
+    ) -> Result<T, YouTrackError> {
+        let response = self.request(Method::GET, path).query(query).send().await?;
+        let status = response.status();
+
+        if status.is_success() {
+            let bytes = response.bytes().await?;
+            return serde_json::from_slice(&bytes).map_err(|source| YouTrackError::Decode {
+                endpoint: path.to_string(),
+                source,
+            });
+        }
+
+        match status.as_u16() {
+            401 => Err(YouTrackError::Unauthorized),
+            403 => Err(YouTrackError::Forbidden),
+            404 => match not_found {
+                Some((resource, id)) => Err(YouTrackError::NotFound {
+                    resource: resource.to_string(),
+                    id: id.to_string(),
+                }),
+                None => Err(api_error(status.as_u16(), response.text().await.ok())),
+            },
+            other => Err(api_error(other, response.text().await.ok())),
+        }
+    }
+
+    /// Fetches one page of up to `limit + 1` items from `path` (see
+    /// [`paginate`]), setting `fields`, `$top`, and `$skip` on top of any
+    /// `query` the caller already needs.
+    pub(crate) async fn get_page<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        fields: &str,
+        mut query: Vec<(&str, String)>,
+        limit: usize,
+        skip: usize,
+    ) -> Result<Page<T>, YouTrackError> {
+        query.push(("fields", fields.to_string()));
+        query.push(("$top", (limit + 1).to_string()));
+        query.push(("$skip", skip.to_string()));
+
+        let batch: Vec<T> = self.get_json(path, &query, None).await?;
+        Ok(paginate(batch, limit, skip))
+    }
+}
+
+/// Builds a [`YouTrackError::Api`] from a non-success status, extracting
+/// YouTrack's `{"error": ..., "error_description": ...}` body shape when
+/// present.
+fn api_error(status: u16, body: Option<String>) -> YouTrackError {
+    let parsed: serde_json::Value = body
+        .as_deref()
+        .and_then(|text| serde_json::from_str(text).ok())
+        .unwrap_or_default();
+
+    YouTrackError::Api {
+        status,
+        error: parsed
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown error")
+            .to_string(),
+        description: parsed
+            .get("error_description")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     }
 }
 
