@@ -5,6 +5,7 @@
 //! `rust-rewrite`.
 
 pub mod error;
+pub mod payload;
 
 /// Canonical name of the MCP server binary, used for identification
 /// in MCP `initialize` responses and end-to-end tests.
