@@ -1,0 +1,17 @@
+[package]
+name = "youtrack-mcp-rs"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "MCP server for YouTrack — issues, articles, agile boards, and time tracking for AI coding agents"
+repository = "https://github.com/Guillermo-Octavio/youtrack-mcp-rs"
+readme = "README.md"
+
+[[bin]]
+name = "youtrack-mcp"
+path = "src/main.rs"
+
+[dependencies]
+
+[dev-dependencies]
+wiremock = "0.6"
