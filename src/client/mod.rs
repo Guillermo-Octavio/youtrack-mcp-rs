@@ -102,6 +102,75 @@ impl YouTrackClient {
         }
     }
 
+    /// Sends a `POST` request to `path` with `query` and a JSON `body`,
+    /// deserializing a successful response as `T`. Mirrors
+    /// [`YouTrackClient::get_json`]'s status-to-error mapping.
+    pub(crate) async fn post_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        body: &serde_json::Value,
+        not_found: Option<(&str, &str)>,
+    ) -> Result<T, YouTrackError> {
+        let response = self
+            .request(Method::POST, path)
+            .query(query)
+            .json(body)
+            .send()
+            .await?;
+        let status = response.status();
+
+        if status.is_success() {
+            let bytes = response.bytes().await?;
+            return serde_json::from_slice(&bytes).map_err(|source| YouTrackError::Decode {
+                endpoint: path.to_string(),
+                source,
+            });
+        }
+
+        match status.as_u16() {
+            401 => Err(YouTrackError::Unauthorized),
+            403 => Err(YouTrackError::Forbidden),
+            404 => match not_found {
+                Some((resource, id)) => Err(YouTrackError::NotFound {
+                    resource: resource.to_string(),
+                    id: id.to_string(),
+                }),
+                None => Err(api_error(status.as_u16(), response.text().await.ok())),
+            },
+            other => Err(api_error(other, response.text().await.ok())),
+        }
+    }
+
+    /// Sends a `DELETE` request to `path`, mapping non-success statuses
+    /// to [`YouTrackError`]. `not_found` names the resource/id to report
+    /// when the API returns `404`.
+    pub(crate) async fn delete(
+        &self,
+        path: &str,
+        not_found: Option<(&str, &str)>,
+    ) -> Result<(), YouTrackError> {
+        let response = self.request(Method::DELETE, path).send().await?;
+        let status = response.status();
+
+        if status.is_success() {
+            return Ok(());
+        }
+
+        match status.as_u16() {
+            401 => Err(YouTrackError::Unauthorized),
+            403 => Err(YouTrackError::Forbidden),
+            404 => match not_found {
+                Some((resource, id)) => Err(YouTrackError::NotFound {
+                    resource: resource.to_string(),
+                    id: id.to_string(),
+                }),
+                None => Err(api_error(status.as_u16(), response.text().await.ok())),
+            },
+            other => Err(api_error(other, response.text().await.ok())),
+        }
+    }
+
     /// Fetches one page of up to `limit + 1` items from `path` (see
     /// [`paginate`]), setting `fields`, `$top`, and `$skip` on top of any
     /// `query` the caller already needs.
@@ -215,5 +284,94 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), 200);
+    }
+
+    #[derive(Debug, serde::Deserialize, PartialEq)]
+    struct Echo {
+        ok: bool,
+    }
+
+    #[tokio::test]
+    async fn post_json_sends_the_body_and_deserializes_a_successful_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/widgets"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "ok": true })),
+            )
+            .mount(&server)
+            .await;
+        let client = YouTrackClient::new(&test_config(&server.uri())).unwrap();
+
+        let body = serde_json::json!({ "name": "thing" });
+        let result: Echo = client.post_json("widgets", &[], &body, None).await.unwrap();
+
+        assert_eq!(result, Echo { ok: true });
+    }
+
+    #[tokio::test]
+    async fn post_json_maps_404_to_not_found_when_named() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/widgets/missing"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let client = YouTrackClient::new(&test_config(&server.uri())).unwrap();
+
+        let error = client
+            .post_json::<Echo>(
+                "widgets/missing",
+                &[],
+                &serde_json::json!({}),
+                Some(("widget", "missing")),
+            )
+            .await
+            .unwrap_err();
+
+        match error {
+            YouTrackError::NotFound { resource, id } => {
+                assert_eq!(resource, "widget");
+                assert_eq!(id, "missing");
+            }
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_succeeds_on_a_2xx_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/widgets/1"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        let client = YouTrackClient::new(&test_config(&server.uri())).unwrap();
+
+        client.delete("widgets/1", None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_maps_404_to_not_found_when_named() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/widgets/missing"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let client = YouTrackClient::new(&test_config(&server.uri())).unwrap();
+
+        let error = client
+            .delete("widgets/missing", Some(("widget", "missing")))
+            .await
+            .unwrap_err();
+
+        match error {
+            YouTrackError::NotFound { resource, id } => {
+                assert_eq!(resource, "widget");
+                assert_eq!(id, "missing");
+            }
+            other => panic!("expected NotFound, got {other:?}"),
+        }
     }
 }
