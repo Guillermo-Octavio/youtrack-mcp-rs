@@ -18,6 +18,7 @@ mod attachments;
 mod commands;
 mod comments;
 mod issues;
+mod local_file;
 mod metadata;
 mod time;
 mod users;

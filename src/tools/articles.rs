@@ -3,10 +3,10 @@
 //!
 //! Every handler calls the real YouTrack REST API. `upload_article_attachment`
 //! additionally enforces a local file-read security policy (see
-//! [`read_attachment_file`]) before ever opening the caller-supplied path.
-
-use std::fs;
-use std::path::{Component, Path};
+//! [`super::local_file::read_attachment_file`]) before ever opening the
+//! caller-supplied path. That policy — and the matching one for
+//! attachment downloads — is shared with the issue-attachment domain in
+//! [`super::local_file`].
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -16,16 +16,10 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::error::ToolError;
 use crate::render::DeleteArticleResult;
 
+use super::local_file::read_attachment_file;
 use super::{cursor_skip, tool_error_result, tool_ok_result, ToolServer, DEFAULT_LIMIT};
-
-/// Maximum size, in bytes, of a local file `upload_article_attachment`
-/// will read and upload (50 MiB). Chosen to comfortably cover typical
-/// knowledge-base attachments (docs, images, small archives) while
-/// bounding memory use and upload time for one MCP call.
-const MAX_ATTACHMENT_SIZE_BYTES: u64 = 50 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListArticlesRequest {
@@ -280,115 +274,6 @@ pub(super) fn router() -> ToolRouter<ToolServer> {
     ToolServer::articles_router()
 }
 
-/// Reads a caller-supplied local file path for `upload_article_attachment`,
-/// enforcing this server's attachment upload security policy before any
-/// bytes are read:
-///
-/// 1. Reject any path containing a `..` (parent-directory) component,
-///    checked on the raw path components before touching the filesystem
-///    at all — this closes off traversal attempts regardless of whether
-///    they would resolve to a real file.
-/// 2. Inspect the path's own [`fs::symlink_metadata`] (which does not
-///    follow a final symlink) and reject it if it is a symlink, or if it
-///    isn't a regular file (e.g. a directory): this server never silently
-///    follows a symlink to read unintended file content.
-/// 3. Reject the file if it is larger than [`MAX_ATTACHMENT_SIZE_BYTES`]
-///    (50 MiB), checked from that same metadata before any bytes are read.
-/// 4. Read the file's bytes and guess its MIME type from its extension.
-///
-/// Returns the file's base name, guessed MIME type, and bytes on success,
-/// or a structured [`ToolError`] naming exactly which check failed.
-fn read_attachment_file(file_path: &str) -> Result<(String, String, Vec<u8>), ToolError> {
-    let path = Path::new(file_path);
-
-    if path.components().any(|c| c == Component::ParentDir) {
-        return Err(ToolError {
-            code: "path_traversal",
-            message: format!("refusing to read `{file_path}`: path contains `..`"),
-            hint: Some(
-                "Pass an absolute path, or a relative path with no `..` segments.".to_string(),
-            ),
-        });
-    }
-
-    let metadata = fs::symlink_metadata(path).map_err(|_| ToolError {
-        code: "file_not_found",
-        message: format!("no local file found at `{file_path}`"),
-        hint: Some("Check the path and try again.".to_string()),
-    })?;
-
-    if metadata.file_type().is_symlink() {
-        return Err(ToolError {
-            code: "symlink_rejected",
-            message: format!("refusing to read `{file_path}`: it is a symlink"),
-            hint: Some("Upload the real file directly instead of a symlink to it.".to_string()),
-        });
-    }
-
-    if !metadata.is_file() {
-        return Err(ToolError {
-            code: "invalid_path",
-            message: format!("`{file_path}` is not a regular file"),
-            hint: Some("Pass the path to a regular file.".to_string()),
-        });
-    }
-
-    if metadata.len() > MAX_ATTACHMENT_SIZE_BYTES {
-        return Err(ToolError {
-            code: "file_too_large",
-            message: format!(
-                "`{file_path}` is {} bytes, which exceeds the {MAX_ATTACHMENT_SIZE_BYTES} byte \
-                 upload limit",
-                metadata.len()
-            ),
-            hint: Some("Upload a smaller file, or split it before uploading.".to_string()),
-        });
-    }
-
-    let bytes = fs::read(path).map_err(|source| ToolError {
-        code: "io_error",
-        message: format!("failed to read `{file_path}`: {source}"),
-        hint: None,
-    })?;
-
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("upload.bin")
-        .to_string();
-    let mime_type = guess_mime_type(&file_name);
-
-    Ok((file_name, mime_type, bytes))
-}
-
-/// Best-effort MIME type guess from a file name's extension, mirroring
-/// common types knowledge-base attachments use. Falls back to
-/// `application/octet-stream` for unrecognized or missing extensions.
-fn guess_mime_type(file_name: &str) -> String {
-    let extension = Path::new(file_name)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(str::to_lowercase);
-
-    match extension.as_deref() {
-        Some("pdf") => "application/pdf",
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("svg") => "image/svg+xml",
-        Some("txt") => "text/plain",
-        Some("md") => "text/markdown",
-        Some("json") => "application/json",
-        Some("csv") => "text/csv",
-        Some("html") => "text/html",
-        Some("zip") => "application/zip",
-        Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        Some("xlsx") => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        _ => "application/octet-stream",
-    }
-    .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -398,9 +283,12 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    use std::fs;
+
     use super::*;
     use crate::client::YouTrackClient;
     use crate::config::Config;
+    use crate::tools::local_file::MAX_ATTACHMENT_SIZE_BYTES;
 
     fn test_server(base_url: &str) -> ToolServer {
         let config = Config {
@@ -738,12 +626,5 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         let structured = result.structured_content.unwrap();
         assert_eq!(structured["code"], "file_not_found");
-    }
-
-    #[test]
-    fn guess_mime_type_recognizes_common_extensions() {
-        assert_eq!(guess_mime_type("diagram.png"), "image/png");
-        assert_eq!(guess_mime_type("report.PDF"), "application/pdf");
-        assert_eq!(guess_mime_type("data.bin"), "application/octet-stream");
     }
 }
