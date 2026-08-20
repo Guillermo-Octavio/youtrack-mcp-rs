@@ -67,6 +67,12 @@ impl ToolServer {
         }
     }
 
+    // Intentionally not paginated: the watchers come embedded in the
+    // issue's `watchers.issueWatchers` field on a single `GET issues/{id}`
+    // call, YouTrack returns the complete set with no `$top`/`$skip`
+    // support on this shape. There is no `has_more`/`next_cursor` to
+    // compute, so `Watchers` returns a bare result by design, not by
+    // oversight.
     #[tool(description = "List the users watching an issue.")]
     async fn list_watchers(&self, params: Parameters<ListWatchersRequest>) -> CallToolResult {
         let ListWatchersRequest { issue_id } = params.0;

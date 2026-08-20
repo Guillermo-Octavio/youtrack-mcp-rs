@@ -210,6 +210,11 @@ impl ToolServer {
         }
     }
 
+    // Intentionally not paginated: YouTrack's `issues/{id}/links` endpoint
+    // returns the complete set of links in one response and has no
+    // `$top`/`$skip` support, unlike the listing endpoints above. There is
+    // no `has_more`/`next_cursor` to compute, so `IssueLinks` returns a
+    // bare result by design, not by oversight.
     #[tool(description = "List an issue's links to other issues.")]
     async fn list_links(&self, params: Parameters<ListLinksRequest>) -> CallToolResult {
         let ListLinksRequest { issue_id } = params.0;
