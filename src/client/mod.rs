@@ -14,6 +14,7 @@ pub mod attachments;
 pub mod commands;
 pub mod comments;
 pub mod issues;
+pub mod metadata;
 pub mod page;
 pub mod projects;
 pub mod resolve;
