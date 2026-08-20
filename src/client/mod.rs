@@ -16,6 +16,7 @@ pub mod issues;
 pub mod page;
 pub mod projects;
 pub mod resolve;
+pub mod time;
 pub mod users;
 
 use std::time::Duration;
