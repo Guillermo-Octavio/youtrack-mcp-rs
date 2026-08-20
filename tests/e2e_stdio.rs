@@ -16,11 +16,21 @@ use youtrack_mcp_rs::config::Config;
 use youtrack_mcp_rs::tools::ToolServer;
 
 /// Builds a [`ToolServer`] with a client pointed at a placeholder URL.
-/// Neither test below exercises a real YouTrack REST call, so this never
-/// needs to reach a real (or mock) server.
+/// The first test below never exercises a real YouTrack REST call, so
+/// this never needs to reach a real (or mock) server.
 fn test_server() -> ToolServer {
     let config = Config {
         youtrack_url: Url::parse("https://example.myjetbrains.com").unwrap(),
+        youtrack_token: "test-token".to_string(),
+    };
+    ToolServer::new(Arc::new(YouTrackClient::new(&config).unwrap()))
+}
+
+/// Builds a [`ToolServer`] with a client pointed at `base_url`, for tests
+/// that exercise a real YouTrack REST call against a [`wiremock::MockServer`].
+fn test_server_against(base_url: &str) -> ToolServer {
+    let config = Config {
+        youtrack_url: Url::parse(base_url).unwrap(),
         youtrack_token: "test-token".to_string(),
     };
     ToolServer::new(Arc::new(YouTrackClient::new(&config).unwrap()))
@@ -106,11 +116,26 @@ async fn stdio_transport_exposes_exactly_the_34_registered_tools() {
 }
 
 #[tokio::test]
-async fn calling_a_stub_tool_returns_a_not_implemented_error() {
+async fn calling_a_real_tool_over_stdio_reaches_the_youtrack_rest_api() {
+    // Proves the full pipeline end to end: stdio transport -> tool router
+    // -> `YouTrackClient` -> a real HTTP call -> a structured MCP result,
+    // now that every tool this phase registers calls the real YouTrack
+    // REST API rather than returning a stub.
+    let mock_server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/tags"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!([{ "id": "1", "name": "urgent" }])),
+        )
+        .mount(&mock_server)
+        .await;
+
     let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
+    let server = test_server_against(&mock_server.uri());
 
     let server_task = tokio::spawn(async move {
-        test_server()
+        server
             .serve(server_transport)
             .await
             .expect("server should accept the in-process transport")
@@ -129,22 +154,15 @@ async fn calling_a_stub_tool_returns_a_not_implemented_error() {
         .await
         .expect("call_tool should return a tool-level result, not a protocol error");
 
-    assert_eq!(
+    assert_ne!(
         result.is_error,
         Some(true),
-        "an unimplemented stub tool must report a tool-level error"
+        "list_tags should succeed against the mocked YouTrack REST API"
     );
     let structured = result
         .structured_content
-        .expect("stub result must carry structured error content");
-    assert_eq!(structured["code"], "not_implemented");
-    assert!(
-        structured["message"]
-            .as_str()
-            .unwrap()
-            .contains("list_tags"),
-        "the error message must name the specific tool that is not implemented"
-    );
+        .expect("a successful tool result must carry structured content");
+    assert_eq!(structured["items"][0]["name"], "urgent");
 
     client
         .cancel()

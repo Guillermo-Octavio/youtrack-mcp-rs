@@ -6,10 +6,7 @@
 //! [`ToolServer::new`] combines every domain's router into one dispatch
 //! table with [`ToolRouter::merge`]/`+`.
 //!
-//! Every tool handler registered here is a Phase 2 stub: it accepts a
-//! minimal typed input, does no real work, and always returns
-//! [`stub_result`]. Real YouTrack REST calls land in a later phase of the
-//! `rust-rewrite` change.
+//! Every tool handler registered here calls the real YouTrack REST API.
 
 mod activity;
 mod agile;
@@ -77,22 +74,6 @@ impl ToolServer {
 )]
 impl ServerHandler for ToolServer {}
 
-/// Builds the standard "not yet implemented" [`CallToolResult`] every stub
-/// tool handler in this module returns, reusing [`ToolError`] (Phase 1
-/// shared error shape) and [`ToolPayload`] (Phase 1 text/JSON pairing) so
-/// every stub tool reports failures the same actionable way real tools
-/// will in later phases.
-pub(crate) fn stub_result(tool_name: &'static str) -> CallToolResult {
-    tool_error_result(ToolError {
-        code: "not_implemented",
-        message: format!("`{tool_name}` is not implemented yet."),
-        hint: Some(
-            "Domain logic for this tool lands in a later phase of the rust-rewrite change."
-                .to_string(),
-        ),
-    })
-}
-
 /// Builds a successful [`CallToolResult`] pairing `value`'s rendered text
 /// with its structured JSON form, for a tool that completed a real
 /// YouTrack REST call.
@@ -148,30 +129,5 @@ mod tests {
         let server = ToolServer::new(test_client());
 
         assert_eq!(server.tool_router.list_all().len(), 34);
-    }
-
-    #[test]
-    fn stub_result_names_the_specific_tool_and_marks_the_call_as_an_error() {
-        let result = stub_result("get_issue");
-
-        assert_eq!(result.is_error, Some(true));
-        let structured = result
-            .structured_content
-            .expect("stub result is structured");
-        assert_eq!(structured["code"], "not_implemented");
-        assert_eq!(structured["message"], "`get_issue` is not implemented yet.");
-    }
-
-    #[test]
-    fn stub_result_message_changes_with_the_tool_name() {
-        let result = stub_result("list_projects");
-
-        let structured = result
-            .structured_content
-            .expect("stub result is structured");
-        assert_eq!(
-            structured["message"],
-            "`list_projects` is not implemented yet."
-        );
     }
 }
