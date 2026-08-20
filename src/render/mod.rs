@@ -13,7 +13,7 @@ mod agile;
 mod issue;
 mod project;
 
-pub use issue::IssueLinks;
+pub use issue::{DeleteIssueResult, IssueLinks};
 
 use crate::client::page::Page;
 use crate::payload::Render;

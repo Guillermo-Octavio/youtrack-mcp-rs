@@ -105,6 +105,23 @@ pub struct IssueLinks {
     pub links: Vec<IssueLink>,
 }
 
+/// The result of a successful `delete_issue` call, self-describing so
+/// the rendered text confirms which issue was permanently removed.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct DeleteIssueResult {
+    pub issue_id: String,
+    pub deleted: bool,
+}
+
+impl Render for DeleteIssueResult {
+    fn render(&self) -> String {
+        format!(
+            "Issue {} permanently deleted. This cannot be undone.",
+            self.issue_id
+        )
+    }
+}
+
 impl Render for IssueLinks {
     fn render(&self) -> String {
         let lines: Vec<String> = self

@@ -124,14 +124,8 @@ async fn calling_a_stub_tool_returns_a_not_implemented_error() {
         .await
         .expect("client should complete the MCP initialize handshake");
 
-    let arguments = serde_json::json!({ "project_id": "DEMO", "summary": "New issue" })
-        .as_object()
-        .unwrap()
-        .clone();
     let result = client
-        .call_tool(
-            rmcp::model::CallToolRequestParams::new("create_issue").with_arguments(arguments),
-        )
+        .call_tool(rmcp::model::CallToolRequestParams::new("list_tags"))
         .await
         .expect("call_tool should return a tool-level result, not a protocol error");
 
@@ -148,7 +142,7 @@ async fn calling_a_stub_tool_returns_a_not_implemented_error() {
         structured["message"]
             .as_str()
             .unwrap()
-            .contains("create_issue"),
+            .contains("list_tags"),
         "the error message must name the specific tool that is not implemented"
     );
 
