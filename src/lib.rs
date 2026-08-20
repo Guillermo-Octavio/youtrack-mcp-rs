@@ -2,8 +2,9 @@
 //!
 //! Exposes shared infrastructure used across the MCP server, plus the
 //! `tools` module wiring every YouTrack MCP tool into a single `rmcp`
-//! server. Tool domain logic lands in a later phase of the SDD change
-//! `rust-rewrite`; this phase only wires transport and discoverability.
+//! server. Every one of the 34 registered tools calls the real YouTrack
+//! REST API; see `youtrack_mcp_rs::tools` for the domain-by-domain
+//! breakdown and `README.md` for the full tool list grouped by area.
 
 pub mod client;
 pub mod config;

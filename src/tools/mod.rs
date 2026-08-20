@@ -68,9 +68,11 @@ impl ToolServer {
 #[tool_handler(
     router = self.tool_router,
     name = "youtrack-mcp",
-    instructions = "YouTrack MCP server. Every tool in this Phase 2 build is a stub \
-                     that returns a `not_implemented` error; domain logic lands in a \
-                     later phase of the rust-rewrite change."
+    instructions = "YouTrack MCP server. Exposes 34 tools covering issue search and \
+                     CRUD, agile boards, the knowledge base, workflow commands, \
+                     comments, attachments, users, time tracking, and issue history. \
+                     Every tool calls the real YouTrack REST API configured via \
+                     YOUTRACK_URL and YOUTRACK_TOKEN."
 )]
 impl ServerHandler for ToolServer {}
 
