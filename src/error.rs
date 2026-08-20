@@ -59,6 +59,14 @@ pub enum YouTrackError {
         endpoint: String,
         source: serde_json::Error,
     },
+
+    /// A create/update request named one or more custom fields that
+    /// aren't configured on the target project.
+    #[error("unknown custom field(s): {}", unknown.join(", "))]
+    UnknownCustomFields {
+        unknown: Vec<String>,
+        valid: Vec<String>,
+    },
 }
 
 /// Actionable, tool-facing error produced from a [`YouTrackError`].
@@ -141,6 +149,20 @@ impl From<YouTrackError> for ToolError {
                     "Unexpected response shape from {endpoint}; the YouTrack API may have changed."
                 );
                 ToolError::new("decode", message, Some(hint))
+            }
+            YouTrackError::UnknownCustomFields { unknown, valid } => {
+                let hint = if valid.is_empty() {
+                    format!(
+                        "This project has no custom fields configured; remove {} from `fields`.",
+                        unknown.join(", ")
+                    )
+                } else {
+                    format!(
+                        "Valid custom fields for this project: {}.",
+                        valid.join(", ")
+                    )
+                };
+                ToolError::new("unknown_custom_field", message, Some(hint))
             }
         }
     }
@@ -305,5 +327,32 @@ mod tests {
         let rendered = tool_error.render();
 
         assert_eq!(rendered, "[validation] request body was malformed");
+    }
+
+    #[test]
+    fn unknown_custom_fields_names_the_field_and_lists_the_valid_set_in_the_hint() {
+        let tool_error: ToolError = YouTrackError::UnknownCustomFields {
+            unknown: vec!["Bogus".to_string()],
+            valid: vec!["Priority".to_string(), "State".to_string()],
+        }
+        .into();
+
+        assert_eq!(tool_error.code, "unknown_custom_field");
+        assert!(tool_error.message.contains("Bogus"));
+        let hint = tool_error.hint.unwrap();
+        assert!(hint.contains("Priority"));
+        assert!(hint.contains("State"));
+    }
+
+    #[test]
+    fn unknown_custom_fields_without_a_valid_set_still_names_the_field() {
+        let tool_error: ToolError = YouTrackError::UnknownCustomFields {
+            unknown: vec!["Bogus".to_string()],
+            valid: vec![],
+        }
+        .into();
+
+        assert_eq!(tool_error.code, "unknown_custom_field");
+        assert!(tool_error.hint.unwrap().contains("Bogus"));
     }
 }
