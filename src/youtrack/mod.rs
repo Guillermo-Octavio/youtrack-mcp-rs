@@ -13,6 +13,7 @@ pub mod article;
 pub mod attachment;
 pub mod comment;
 pub mod issue;
+pub mod metadata;
 pub mod project;
 pub mod user;
 pub mod work_item;
