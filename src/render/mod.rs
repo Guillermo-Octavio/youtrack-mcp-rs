@@ -16,6 +16,7 @@ mod attachment;
 mod command;
 mod comment;
 mod issue;
+mod metadata;
 mod project;
 mod user;
 mod work_item;
