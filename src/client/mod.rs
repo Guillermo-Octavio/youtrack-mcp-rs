@@ -7,6 +7,7 @@
 //! create article, and similar) are added alongside the tools that
 //! need them in later phases of the SDD change `rust-rewrite`.
 
+pub mod activity;
 pub mod agile;
 pub mod articles;
 pub mod attachments;
