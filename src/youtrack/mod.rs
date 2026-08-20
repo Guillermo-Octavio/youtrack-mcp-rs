@@ -8,5 +8,6 @@
 //! failing the whole response.
 
 pub mod agile;
+pub mod article;
 pub mod issue;
 pub mod project;
