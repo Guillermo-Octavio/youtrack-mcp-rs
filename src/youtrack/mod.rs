@@ -13,3 +13,4 @@ pub mod attachment;
 pub mod comment;
 pub mod issue;
 pub mod project;
+pub mod user;
