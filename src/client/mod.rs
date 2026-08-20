@@ -4,8 +4,8 @@
 //! per server process, and knows how to build authenticated request
 //! builders against the YouTrack REST API base URL
 //! (`{youtrack_url}/api`). Domain-specific calls (search issues,
-//! create article, and similar) are added alongside the tools that
-//! need them in later phases of the SDD change `rust-rewrite`.
+//! create article, and similar) live in the submodules below, each
+//! alongside the tool handlers that call it.
 
 pub mod activity;
 pub mod agile;
@@ -17,7 +17,6 @@ pub mod issues;
 pub mod metadata;
 pub mod page;
 pub mod projects;
-pub mod resolve;
 pub mod time;
 pub mod users;
 

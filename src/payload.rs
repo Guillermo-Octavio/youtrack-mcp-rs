@@ -4,9 +4,9 @@
 //! (for chat-style clients) and a structured JSON value (for clients
 //! that consume `structuredContent`). [`Render`] and [`ToolPayload`]
 //! produce both from a single value so tool handlers only implement
-//! `render` once. Wiring this into `rmcp`'s `CallToolResult` /
-//! `structuredContent` happens in the MCP transport phase, once `rmcp`
-//! is integrated; this module only implements the pure pairing logic.
+//! `render` once. `src/tools/mod.rs` wires this into `rmcp`'s
+//! `CallToolResult` and `structuredContent`; this module only
+//! implements the pure pairing logic.
 
 use serde::Serialize;
 
