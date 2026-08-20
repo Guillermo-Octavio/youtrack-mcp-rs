@@ -11,10 +11,13 @@
 
 mod agile;
 mod article;
+mod command;
+mod comment;
 mod issue;
 mod project;
 
 pub use article::DeleteArticleResult;
+pub use command::CommandResult;
 pub use issue::{DeleteIssueResult, IssueLinks};
 
 use crate::client::page::Page;
