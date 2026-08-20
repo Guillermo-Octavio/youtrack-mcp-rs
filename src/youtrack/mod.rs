@@ -7,6 +7,7 @@
 //! container level fills in any field YouTrack omitted, rather than
 //! failing the whole response.
 
+pub mod activity;
 pub mod agile;
 pub mod article;
 pub mod attachment;
