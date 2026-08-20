@@ -14,3 +14,4 @@ pub mod comment;
 pub mod issue;
 pub mod project;
 pub mod user;
+pub mod work_item;
