@@ -5,7 +5,7 @@ use crate::youtrack::issue::{CustomField, Issue, IssueLink};
 /// clients present it: an object's `name`/`fullName`/`login` (in that
 /// order), an array joined with commas, a scalar as-is, or `—` when
 /// absent.
-fn render_field_value(value: &serde_json::Value) -> String {
+pub(super) fn render_field_value(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => "—".to_string(),
         serde_json::Value::String(text) => text.clone(),

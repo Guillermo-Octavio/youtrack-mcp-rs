@@ -9,6 +9,7 @@
 //! implementation here, covering every paginated list tool: it renders
 //! each item and appends a pagination footer when more results exist.
 
+mod activity;
 mod agile;
 mod article;
 mod attachment;
