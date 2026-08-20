@@ -16,11 +16,13 @@ mod command;
 mod comment;
 mod issue;
 mod project;
+mod user;
 
 pub use article::DeleteArticleResult;
 pub use attachment::DownloadAttachmentResult;
 pub use command::CommandResult;
 pub use issue::{DeleteIssueResult, IssueLinks};
+pub use user::Watchers;
 
 use crate::client::page::Page;
 use crate::payload::Render;
