@@ -10,9 +10,11 @@
 //! each item and appends a pagination footer when more results exist.
 
 mod agile;
+mod article;
 mod issue;
 mod project;
 
+pub use article::DeleteArticleResult;
 pub use issue::{DeleteIssueResult, IssueLinks};
 
 use crate::client::page::Page;
