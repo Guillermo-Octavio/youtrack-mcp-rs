@@ -146,6 +146,9 @@ impl YouTrackClient {
                 }),
                 None => Err(api_error(status.as_u16(), response.text().await.ok())),
             },
+            429 => Err(YouTrackError::RateLimited {
+                retry_after: retry_after(&response),
+            }),
             other => Err(api_error(other, response.text().await.ok())),
         }
     }
@@ -186,6 +189,9 @@ impl YouTrackClient {
                 }),
                 None => Err(api_error(status.as_u16(), response.text().await.ok())),
             },
+            429 => Err(YouTrackError::RateLimited {
+                retry_after: retry_after(&response),
+            }),
             other => Err(api_error(other, response.text().await.ok())),
         }
     }
@@ -209,6 +215,9 @@ impl YouTrackClient {
         match status.as_u16() {
             401 => Err(YouTrackError::Unauthorized),
             403 => Err(YouTrackError::Forbidden),
+            429 => Err(YouTrackError::RateLimited {
+                retry_after: retry_after(&response),
+            }),
             other => Err(api_error(other, response.text().await.ok())),
         }
     }
@@ -260,6 +269,9 @@ impl YouTrackClient {
                 }),
                 None => Err(api_error(status.as_u16(), response.text().await.ok())),
             },
+            429 => Err(YouTrackError::RateLimited {
+                retry_after: retry_after(&response),
+            }),
             other => Err(api_error(other, response.text().await.ok())),
         }
     }
@@ -289,6 +301,9 @@ impl YouTrackClient {
                 }),
                 None => Err(api_error(status.as_u16(), response.text().await.ok())),
             },
+            429 => Err(YouTrackError::RateLimited {
+                retry_after: retry_after(&response),
+            }),
             other => Err(api_error(other, response.text().await.ok())),
         }
     }
@@ -311,6 +326,19 @@ impl YouTrackClient {
         let batch: Vec<T> = self.get_json(path, &query, None).await?;
         Ok(paginate(batch, limit, skip))
     }
+}
+
+/// Parses a response's `Retry-After` header as a whole number of
+/// seconds, per [RFC 9110 §10.2.3](https://www.rfc-editor.org/rfc/rfc9110#field.retry-after).
+/// Returns `None` when the header is absent or not a bare integer
+/// (e.g. an HTTP-date form, which this client does not need to parse).
+fn retry_after(response: &reqwest::Response) -> Option<Duration> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(Duration::from_secs)
 }
 
 /// Builds a [`YouTrackError::Api`] from a non-success status, extracting
@@ -494,6 +522,52 @@ mod tests {
                 assert_eq!(id, "missing");
             }
             other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_json_maps_429_with_retry_after_header_to_rate_limited_with_the_parsed_duration() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/widgets"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "5"))
+            .mount(&server)
+            .await;
+        let client = YouTrackClient::new(&test_config(&server.uri())).unwrap();
+
+        let error = client
+            .get_json::<Echo>("widgets", &[], None)
+            .await
+            .unwrap_err();
+
+        match error {
+            YouTrackError::RateLimited { retry_after } => {
+                assert_eq!(retry_after, Some(Duration::from_secs(5)));
+            }
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_json_maps_429_without_retry_after_header_to_rate_limited_with_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/widgets"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+        let client = YouTrackClient::new(&test_config(&server.uri())).unwrap();
+
+        let error = client
+            .get_json::<Echo>("widgets", &[], None)
+            .await
+            .unwrap_err();
+
+        match error {
+            YouTrackError::RateLimited { retry_after } => {
+                assert_eq!(retry_after, None);
+            }
+            other => panic!("expected RateLimited, got {other:?}"),
         }
     }
 }
