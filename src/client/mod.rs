@@ -8,6 +8,7 @@
 //! need them in later phases of the SDD change `rust-rewrite`.
 
 pub mod agile;
+pub mod articles;
 pub mod issues;
 pub mod page;
 pub mod projects;
@@ -15,6 +16,7 @@ pub mod resolve;
 
 use std::time::Duration;
 
+use reqwest::multipart::{Form, Part};
 use reqwest::{Client, Method, RequestBuilder};
 use serde::de::DeserializeOwned;
 
@@ -23,6 +25,17 @@ use crate::error::YouTrackError;
 use page::{paginate, Page};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// One file part for [`YouTrackClient::post_multipart`], bundling the
+/// multipart field name alongside the uploaded file's name, MIME type,
+/// and bytes (grouped into one struct to keep the method's argument
+/// count reasonable).
+pub(crate) struct MultipartFile<'a> {
+    pub field_name: &'a str,
+    pub file_name: &'a str,
+    pub mime_type: &'a str,
+    pub bytes: Vec<u8>,
+}
 
 /// Thin wrapper around a shared [`reqwest::Client`] configured for
 /// authenticated requests against a YouTrack REST API base URL.
@@ -116,6 +129,57 @@ impl YouTrackClient {
             .request(Method::POST, path)
             .query(query)
             .json(body)
+            .send()
+            .await?;
+        let status = response.status();
+
+        if status.is_success() {
+            let bytes = response.bytes().await?;
+            return serde_json::from_slice(&bytes).map_err(|source| YouTrackError::Decode {
+                endpoint: path.to_string(),
+                source,
+            });
+        }
+
+        match status.as_u16() {
+            401 => Err(YouTrackError::Unauthorized),
+            403 => Err(YouTrackError::Forbidden),
+            404 => match not_found {
+                Some((resource, id)) => Err(YouTrackError::NotFound {
+                    resource: resource.to_string(),
+                    id: id.to_string(),
+                }),
+                None => Err(api_error(status.as_u16(), response.text().await.ok())),
+            },
+            other => Err(api_error(other, response.text().await.ok())),
+        }
+    }
+
+    /// Sends a multipart `POST` request to `path` with one file part
+    /// described by `file`, deserializing a successful response as `T`.
+    /// Mirrors [`YouTrackClient::get_json`]'s status-to-error mapping.
+    /// Used for attachment uploads, which YouTrack's REST API expects as
+    /// `multipart/form-data` rather than JSON.
+    pub(crate) async fn post_multipart<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        file: MultipartFile<'_>,
+        not_found: Option<(&str, &str)>,
+    ) -> Result<T, YouTrackError> {
+        let part = Part::bytes(file.bytes)
+            .file_name(file.file_name.to_string())
+            .mime_str(file.mime_type)
+            .map_err(|_| YouTrackError::Validation {
+                field: Some("mime_type".to_string()),
+                message: format!("invalid mime type: {}", file.mime_type),
+            })?;
+        let form = Form::new().part(file.field_name.to_string(), part);
+
+        let response = self
+            .request(Method::POST, path)
+            .query(query)
+            .multipart(form)
             .send()
             .await?;
         let status = response.status();
