@@ -9,6 +9,8 @@
 
 pub mod agile;
 pub mod articles;
+pub mod commands;
+pub mod comments;
 pub mod issues;
 pub mod page;
 pub mod projects;
@@ -151,6 +153,29 @@ impl YouTrackClient {
                 }),
                 None => Err(api_error(status.as_u16(), response.text().await.ok())),
             },
+            other => Err(api_error(other, response.text().await.ok())),
+        }
+    }
+
+    /// Sends a `POST` request to `path` with a JSON `body`, discarding
+    /// any response body and mapping non-success statuses to
+    /// [`YouTrackError`]. Used for endpoints like `/commands` whose
+    /// success response shape isn't needed by callers.
+    pub(crate) async fn post_status_only(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<(), YouTrackError> {
+        let response = self.request(Method::POST, path).json(body).send().await?;
+        let status = response.status();
+
+        if status.is_success() {
+            return Ok(());
+        }
+
+        match status.as_u16() {
+            401 => Err(YouTrackError::Unauthorized),
+            403 => Err(YouTrackError::Forbidden),
             other => Err(api_error(other, response.text().await.ok())),
         }
     }
