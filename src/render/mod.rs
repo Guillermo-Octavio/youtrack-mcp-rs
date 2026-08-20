@@ -11,12 +11,14 @@
 
 mod agile;
 mod article;
+mod attachment;
 mod command;
 mod comment;
 mod issue;
 mod project;
 
 pub use article::DeleteArticleResult;
+pub use attachment::DownloadAttachmentResult;
 pub use command::CommandResult;
 pub use issue::{DeleteIssueResult, IssueLinks};
 

@@ -9,6 +9,7 @@
 
 pub mod agile;
 pub mod articles;
+pub mod attachments;
 pub mod commands;
 pub mod comments;
 pub mod issues;
@@ -28,6 +29,11 @@ use page::{paginate, Page};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Timeout for the dedicated attachment-download HTTP client (120s, wider
+/// than [`DEFAULT_TIMEOUT`] since attachment bodies can be considerably
+/// larger than a JSON API response).
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// One file part for [`YouTrackClient::post_multipart`], bundling the
 /// multipart field name alongside the uploaded file's name, MIME type,
 /// and bytes (grouped into one struct to keep the method's argument
@@ -44,20 +50,44 @@ pub(crate) struct MultipartFile<'a> {
 #[derive(Debug, Clone)]
 pub struct YouTrackClient {
     http: Client,
+    /// A second, dedicated client for attachment downloads
+    /// (`GET issues/{id}/attachments/{id}`'s `url` field): a longer
+    /// timeout, no default `Accept` header, and — critically — no
+    /// automatic redirect following, since
+    /// [`YouTrackClient::download_attachment_bytes`] must inspect every
+    /// redirect's target host itself before deciding whether to follow it.
+    download_http: Client,
     base_url: String,
+    /// `{youtrack_url}`, with any trailing slash trimmed but with no
+    /// `/api` suffix appended — unlike [`YouTrackClient::base_url`],
+    /// since attachment download URLs YouTrack returns are relative to
+    /// the host root (already including their own `/api/...` segment),
+    /// not to this client's `/api` base.
+    root_url: String,
     token: String,
 }
 
 impl YouTrackClient {
-    /// Builds the client's shared [`reqwest::Client`] once, from a
+    /// Builds the client's shared [`reqwest::Client`]s once, from a
     /// resolved [`Config`]. The base URL is `{youtrack_url}/api`.
     pub fn new(config: &Config) -> Result<Self, reqwest::Error> {
         let http = Client::builder().timeout(DEFAULT_TIMEOUT).build()?;
-        let base_url = format!("{}/api", config.youtrack_url.as_str().trim_end_matches('/'));
+        let download_http = Client::builder()
+            .timeout(DOWNLOAD_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+        let root_url = config
+            .youtrack_url
+            .as_str()
+            .trim_end_matches('/')
+            .to_string();
+        let base_url = format!("{root_url}/api");
 
         Ok(Self {
             http,
+            download_http,
             base_url,
+            root_url,
             token: config.youtrack_token.clone(),
         })
     }

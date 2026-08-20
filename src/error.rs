@@ -67,6 +67,23 @@ pub enum YouTrackError {
         unknown: Vec<String>,
         valid: Vec<String>,
     },
+
+    /// An attachment download redirected to a different host than the
+    /// configured `YOUTRACK_URL`. Rejected outright rather than followed,
+    /// so this server's bearer token is never sent to an unexpected
+    /// origin.
+    #[error("attachment download redirected to a different host: {location}")]
+    CrossHostRedirect { location: String },
+
+    /// An attachment download exceeded the maximum number of bytes this
+    /// client will buffer for one download.
+    #[error("attachment is larger than the {max_bytes} byte download limit")]
+    DownloadTooLarge { max_bytes: u64 },
+
+    /// An attachment download followed more redirects than this client
+    /// allows without reaching a final response.
+    #[error("attachment download followed more than {max_redirects} redirects")]
+    TooManyRedirects { max_redirects: u32 },
 }
 
 /// Actionable, tool-facing error produced from a [`YouTrackError`].
@@ -164,6 +181,25 @@ impl From<YouTrackError> for ToolError {
                 };
                 ToolError::new("unknown_custom_field", message, Some(hint))
             }
+            YouTrackError::CrossHostRedirect { location } => {
+                let hint = format!(
+                    "The download redirected to `{location}`, a different host than the \
+                     configured YOUTRACK_URL. This request was rejected to avoid sending \
+                     credentials to an unexpected origin."
+                );
+                ToolError::new("cross_host_redirect", message, Some(hint))
+            }
+            YouTrackError::DownloadTooLarge { max_bytes } => {
+                let hint = format!(
+                    "This server refuses to buffer an attachment larger than {max_bytes} bytes."
+                );
+                ToolError::new("download_too_large", message, Some(hint))
+            }
+            YouTrackError::TooManyRedirects { .. } => ToolError::new(
+                "too_many_redirects",
+                message,
+                Some("The attachment download endpoint redirected too many times; try again later or check the YouTrack server configuration.".to_string()),
+            ),
         }
     }
 }
@@ -354,5 +390,35 @@ mod tests {
 
         assert_eq!(tool_error.code, "unknown_custom_field");
         assert!(tool_error.hint.unwrap().contains("Bogus"));
+    }
+
+    #[test]
+    fn cross_host_redirect_hint_names_the_redirect_target() {
+        let tool_error: ToolError = YouTrackError::CrossHostRedirect {
+            location: "https://evil.example.com/steal".to_string(),
+        }
+        .into();
+
+        assert_eq!(tool_error.code, "cross_host_redirect");
+        assert!(tool_error.hint.unwrap().contains("evil.example.com"));
+    }
+
+    #[test]
+    fn download_too_large_hint_names_the_byte_limit() {
+        let tool_error: ToolError = YouTrackError::DownloadTooLarge {
+            max_bytes: 52_428_800,
+        }
+        .into();
+
+        assert_eq!(tool_error.code, "download_too_large");
+        assert!(tool_error.hint.unwrap().contains("52428800"));
+    }
+
+    #[test]
+    fn too_many_redirects_maps_to_a_structured_tool_error() {
+        let tool_error: ToolError = YouTrackError::TooManyRedirects { max_redirects: 5 }.into();
+
+        assert_eq!(tool_error.code, "too_many_redirects");
+        assert!(tool_error.hint.is_some());
     }
 }
