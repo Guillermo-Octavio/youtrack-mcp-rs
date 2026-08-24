@@ -27,14 +27,48 @@ not yet been published to crates.io or tagged with a GitHub release — see
 ## Install
 
 This crate is not yet published to crates.io and no GitHub release has been
-tagged yet. Until then, build from source:
+tagged yet. Until then, build from source. The steps below cover Linux,
+macOS, Windows 11 (native), and WSL2.
+
+### 1. Install a Rust toolchain
+
+- **Linux / macOS / WSL2**
+
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  source "$HOME/.cargo/env"
+  ```
+
+- **Windows 11 (native)**
+
+  Rust needs the MSVC linker, so install the Visual Studio Build Tools first,
+  then `rustup`:
+
+  ```powershell
+  winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools"
+  winget install Rustlang.Rustup
+  ```
+
+  (Alternatively, download `rustup-init.exe` from <https://rustup.rs>.)
+
+Verify with `rustc --version` in a new shell.
+
+### 2. Build the binary
+
+Same command on every platform:
 
 ```bash
 git clone https://github.com/Guillermo-Octavio/youtrack-mcp-rs
 cd youtrack-mcp-rs
 cargo build --release
-# binary at target/release/youtrack-mcp
 ```
+
+The binary is written to:
+
+| Platform | Binary path |
+|---|---|
+| Linux / macOS / WSL2 | `target/release/youtrack-mcp` |
+| Windows 11 (native) | `target\release\youtrack-mcp.exe` |
 
 Two distribution paths are planned once the project is tagged and published:
 
@@ -62,15 +96,46 @@ verified.
 
 ## MCP client configuration
 
-Add the server as a stdio-based MCP server. This example uses the
-`claude_desktop_config.json` shape; any MCP client that launches stdio
-servers accepts an equivalent entry:
+The server speaks MCP over stdio, so any client that can launch a local
+process works. Below are step-by-step instructions for [Claude Code](#claude-code)
+and [OpenCode](#opencode). In every example, replace `/path/to/youtrack-mcp`
+with the absolute path to the binary you built above.
+
+### Claude Code
+
+If the `claude` CLI isn't installed yet:
+
+| Platform | Install command |
+|---|---|
+| Linux / macOS / WSL2 | `curl -fsSL https://claude.ai/install.sh \| bash` |
+| Windows 11 (PowerShell) | `irm https://claude.ai/install.ps1 \| iex` |
+| Windows 11 (WinGet) | `winget install Anthropic.ClaudeCode` |
+| Any platform (npm, needs Node.js 22+) | `npm install -g @anthropic-ai/claude-code` |
+
+Verify with `claude --version`.
+
+**Register the server** with the CLI:
+
+```bash
+claude mcp add --scope user \
+  --env YOUTRACK_URL=https://example.myjetbrains.com \
+  --env YOUTRACK_TOKEN=perm:xxxxxxxxxxxxxxxxxxxxxxxx \
+  youtrack -- /path/to/youtrack-mcp
+```
+
+`--scope` controls where the entry is written: `local` (current project
+only, the default), `project` (writes `.mcp.json`, shared with the team via
+git), or `user` (writes `~/.claude.json`, available in every project).
+
+Equivalently, edit `.mcp.json` (or the user-scoped config) by hand:
 
 ```json
 {
   "mcpServers": {
     "youtrack": {
+      "type": "stdio",
       "command": "/path/to/youtrack-mcp",
+      "args": [],
       "env": {
         "YOUTRACK_URL": "https://example.myjetbrains.com",
         "YOUTRACK_TOKEN": "perm:xxxxxxxxxxxxxxxxxxxxxxxx"
@@ -79,6 +144,77 @@ servers accepts an equivalent entry:
   }
 }
 ```
+
+**Verify it's registered:**
+
+```bash
+claude mcp list
+claude mcp get youtrack
+```
+
+or run `/mcp` inside a Claude Code session.
+
+**Platform notes:**
+
+- Windows 11 (native): use the `.exe` path, e.g.
+  `"command": "C:\\path\\to\\youtrack-mcp.exe"` (escape backslashes in JSON,
+  or use forward slashes).
+- WSL2: keep the Claude Code session and the binary on the same side. If
+  Claude Code runs inside WSL2, point `command` at the Linux binary
+  (`target/release/youtrack-mcp`, or `/mnt/c/...` if it lives on the Windows
+  filesystem) — don't mix a WSL2 session with a native-Windows-built `.exe`.
+
+### OpenCode
+
+If OpenCode isn't installed yet:
+
+| Platform | Install command |
+|---|---|
+| Linux / macOS / WSL2 | `curl -fsSL https://opencode.ai/install \| bash` |
+| Windows 11 (npm, needs Node.js) | `npm install -g opencode-ai` |
+| Windows 11 (Scoop) | `scoop install opencode` |
+| macOS (Homebrew) | `brew install sst/tap/opencode` |
+
+WSL2 is the recommended way to run OpenCode on Windows for full
+compatibility; native Windows support is secondary but works.
+
+**Register the server** in `opencode.json` — either project-scoped (repo
+root) or global (`~/.config/opencode/opencode.json` on Linux/macOS/WSL2):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "youtrack": {
+      "type": "local",
+      "command": ["/path/to/youtrack-mcp"],
+      "enabled": true,
+      "environment": {
+        "YOUTRACK_URL": "https://example.myjetbrains.com",
+        "YOUTRACK_TOKEN": "perm:xxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+Note the differences from Claude Code's schema: the top-level key is `mcp`
+(not `mcpServers`), `command` is an array (not a string), and the
+environment key is `environment` (not `env`).
+
+**Verify it's registered:**
+
+```bash
+opencode mcp list
+opencode mcp debug youtrack
+```
+
+**Platform notes:**
+
+- Windows 11 (native): use the `.exe` path in the `command` array, e.g.
+  `"command": ["C:\\path\\to\\youtrack-mcp.exe"]`.
+- WSL2: same rule as Claude Code — if OpenCode runs inside WSL2, point
+  `command` at the Linux binary, not a native-Windows `.exe`.
 
 ## Tools
 
