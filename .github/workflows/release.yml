@@ -12,6 +12,8 @@ jobs:
   build-release-binary:
     name: Build release binary (linux x86_64)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
