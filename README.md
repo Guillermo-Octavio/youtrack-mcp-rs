@@ -10,8 +10,7 @@ coding agents that speak MCP over stdio.
 ## Status
 
 All 34 tools call the real YouTrack REST API. The full test suite (234
-tests, including a stdio-transport end-to-end test) passes. This crate has
-not yet been published to crates.io or tagged with a GitHub release — see
+tests, including a stdio-transport end-to-end test) passes — see
 [Install](#install) below.
 
 ## Quick path
