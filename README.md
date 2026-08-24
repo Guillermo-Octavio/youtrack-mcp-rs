@@ -10,8 +10,9 @@ coding agents that speak MCP over stdio.
 ## Status
 
 All 34 tools call the real YouTrack REST API. The full test suite (234
-tests, including a stdio-transport end-to-end test) passes — see
-[Install](#install) below.
+tests, including a stdio-transport end-to-end test) passes. Published as
+[`youtrack-mcp-rs`](https://crates.io/crates/youtrack-mcp-rs) on crates.io
+— see [Install](#install) below.
 
 ## Quick path
 
@@ -25,11 +26,23 @@ tests, including a stdio-transport end-to-end test) passes — see
 
 ## Install
 
-This crate is not yet published to crates.io and no GitHub release has been
-tagged yet. Until then, build from source. The steps below cover Linux,
-macOS, Windows 11 (native), and WSL2.
+The fastest path is `cargo install`; the steps below also cover building
+from source, which the same page covers for Linux, macOS, Windows 11
+(native), and WSL2.
 
-### 1. Install a Rust toolchain
+```bash
+cargo install youtrack-mcp-rs
+# binary installed as youtrack-mcp in ~/.cargo/bin (or %USERPROFILE%\.cargo\bin on Windows)
+```
+
+A prebuilt Linux x86_64 binary is also attached to every
+[GitHub Release](https://github.com/Guillermo-Octavio/youtrack-mcp-rs/releases) —
+download `youtrack-mcp-x86_64-unknown-linux-gnu` if you'd rather skip
+building it yourself.
+
+### Building from source
+
+#### 1. Install a Rust toolchain
 
 - **Linux / macOS / WSL2**
 
@@ -52,7 +65,7 @@ macOS, Windows 11 (native), and WSL2.
 
 Verify with `rustc --version` in a new shell.
 
-### 2. Build the binary
+#### 2. Build the binary
 
 Same command on every platform:
 
@@ -68,15 +81,6 @@ The binary is written to:
 |---|---|
 | Linux / macOS / WSL2 | `target/release/youtrack-mcp` |
 | Windows 11 (native) | `target\release\youtrack-mcp.exe` |
-
-Two distribution paths are planned once the project is tagged and published:
-
-- **`cargo install youtrack-mcp-rs`** — once the crate is published to
-  crates.io.
-- **Prebuilt binary download** — once a `v*` tag is pushed, the
-  [release workflow](.github/workflows/release.yml) builds and attaches a
-  Linux x86_64 binary to the corresponding GitHub Release; download it from
-  the repository's Releases page.
 
 ## Configuration
 
