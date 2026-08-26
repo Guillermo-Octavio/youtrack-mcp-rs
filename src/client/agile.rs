@@ -52,6 +52,23 @@ impl YouTrackClient {
         self.get_json(&path, &query, Some(("sprint", sprint_id)))
             .await
     }
+
+    /// Adds an existing issue to a sprint
+    /// (`POST /agiles/{board_id}/sprints/{sprint_id}/issues`). This
+    /// calls the REST API directly rather than going through
+    /// [`YouTrackClient::apply_command`]'s command-language parser,
+    /// which chokes on board names containing `|` or `:`.
+    pub async fn add_issue_to_sprint(
+        &self,
+        board_id: &str,
+        sprint_id: &str,
+        issue_id: &str,
+    ) -> Result<(), YouTrackError> {
+        let path = format!("agiles/{board_id}/sprints/{sprint_id}/issues");
+        let body = serde_json::json!({ "id": issue_id });
+        self.post_status_only(&path, &body, Some(("sprint", sprint_id)))
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -160,6 +177,50 @@ mod tests {
         let client = test_client(&server.uri());
 
         let error = client.get_sprint("board-1", "missing").await.unwrap_err();
+
+        match error {
+            YouTrackError::NotFound { resource, id } => {
+                assert_eq!(resource, "sprint");
+                assert_eq!(id, "missing");
+            }
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn add_issue_to_sprint_posts_the_issue_id_to_the_sprint_issues_endpoint() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/agiles/board-1/sprints/sprint-1/issues"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let client = test_client(&server.uri());
+
+        client
+            .add_issue_to_sprint("board-1", "sprint-1", "ISSUE-1")
+            .await
+            .unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body, serde_json::json!({ "id": "ISSUE-1" }));
+    }
+
+    #[tokio::test]
+    async fn add_issue_to_sprint_maps_404_to_not_found_with_the_sprint_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/agiles/board-1/sprints/missing/issues"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let client = test_client(&server.uri());
+
+        let error = client
+            .add_issue_to_sprint("board-1", "missing", "ISSUE-1")
+            .await
+            .unwrap_err();
 
         match error {
             YouTrackError::NotFound { resource, id } => {

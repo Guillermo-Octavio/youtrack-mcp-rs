@@ -9,7 +9,7 @@ coding agents that speak MCP over stdio.
 
 ## Status
 
-All 34 tools call the real YouTrack REST API. The full test suite (234
+All 35 tools call the real YouTrack REST API. The full test suite (240
 tests, including a stdio-transport end-to-end test) passes. Published as
 [`youtrack-mcp-rs`](https://crates.io/crates/youtrack-mcp-rs) on crates.io
 — see [Install](#install) below.
@@ -221,7 +221,7 @@ opencode mcp debug youtrack
 
 ## Tools
 
-34 tools, grouped by domain. This list must stay in sync with
+35 tools, grouped by domain. This list must stay in sync with
 `EXPECTED_TOOL_NAMES` in [`tests/e2e_stdio.rs`](tests/e2e_stdio.rs), which
 asserts the running server exposes exactly these names — if you add,
 rename, or remove a tool, update both places together.
@@ -229,7 +229,7 @@ rename, or remove a tool, update both places together.
 | Domain | Tools |
 |---|---|
 | Search & Read | `search_issues`, `get_issue`, `list_projects`, `list_project_fields`, `list_links` |
-| Agile | `list_agile_boards`, `list_sprints`, `get_sprint` |
+| Agile | `list_agile_boards`, `list_sprints`, `get_sprint`, `move_issue_to_sprint` |
 | Issue CRUD | `create_issue`, `update_issue`, `delete_issue` |
 | Knowledge Base | `list_articles`, `get_article`, `create_article`, `update_article`, `delete_article`, `list_article_attachments`, `upload_article_attachment` |
 | Workflow Commands | `apply_command`, `bulk_command` |

@@ -68,7 +68,7 @@ impl ToolServer {
 #[tool_handler(
     router = self.tool_router,
     name = "youtrack-mcp",
-    instructions = "YouTrack MCP server. Exposes 34 tools covering issue search and \
+    instructions = "YouTrack MCP server. Exposes 35 tools covering issue search and \
                      CRUD, agile boards, the knowledge base, workflow commands, \
                      comments, attachments, users, time tracking, and issue history. \
                      Every tool calls the real YouTrack REST API configured via \
@@ -127,9 +127,9 @@ mod tests {
     }
 
     #[test]
-    fn tool_server_registers_exactly_34_tools() {
+    fn tool_server_registers_exactly_35_tools() {
         let server = ToolServer::new(test_client());
 
-        assert_eq!(server.tool_router.list_all().len(), 34);
+        assert_eq!(server.tool_router.list_all().len(), 35);
     }
 }

@@ -23,7 +23,7 @@ impl YouTrackClient {
                 .collect::<Vec<_>>(),
         });
 
-        self.post_status_only("commands", &body).await
+        self.post_status_only("commands", &body, None).await
     }
 }
 

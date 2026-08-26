@@ -1,6 +1,24 @@
 use crate::payload::Render;
 use crate::youtrack::agile::{AgileBoard, Sprint, SprintDetail, SprintIssue};
 
+/// The result of a successful `move_issue_to_sprint` call, self-describing
+/// so the rendered text confirms which issue moved into which sprint.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct MoveIssueToSprintResult {
+    pub issue_id: String,
+    pub board_id: String,
+    pub sprint_id: String,
+}
+
+impl Render for MoveIssueToSprintResult {
+    fn render(&self) -> String {
+        format!(
+            "Added {} to sprint {} on board {}.",
+            self.issue_id, self.sprint_id, self.board_id
+        )
+    }
+}
+
 /// Formats a YouTrack epoch-millisecond timestamp. YouTrack does not
 /// consistently return calendar dates, so this keeps the raw value
 /// rather than pulling in a date/time dependency for display only.

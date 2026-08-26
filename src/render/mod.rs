@@ -21,6 +21,7 @@ mod project;
 mod user;
 mod work_item;
 
+pub use agile::MoveIssueToSprintResult;
 pub use article::DeleteArticleResult;
 pub use attachment::DownloadAttachmentResult;
 pub use command::CommandResult;

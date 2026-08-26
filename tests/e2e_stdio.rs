@@ -5,7 +5,7 @@
 //! production, minus touching the process's real stdin/stdout — with a
 //! real `rmcp` client performing the MCP `initialize` handshake and a
 //! `tools/list` call. This proves the server is reachable over the MCP
-//! protocol and exposes exactly the 34 tools this phase registers.
+//! protocol and exposes exactly the 35 tools this phase registers.
 
 use std::sync::Arc;
 
@@ -45,6 +45,7 @@ const EXPECTED_TOOL_NAMES: &[&str] = &[
     "list_agile_boards",
     "list_sprints",
     "get_sprint",
+    "move_issue_to_sprint",
     "create_issue",
     "update_issue",
     "delete_issue",
@@ -74,7 +75,7 @@ const EXPECTED_TOOL_NAMES: &[&str] = &[
 ];
 
 #[tokio::test]
-async fn stdio_transport_exposes_exactly_the_34_registered_tools() {
+async fn stdio_transport_exposes_exactly_the_35_registered_tools() {
     let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
 
     let server_task = tokio::spawn(async move {
@@ -105,7 +106,7 @@ async fn stdio_transport_exposes_exactly_the_34_registered_tools() {
 
     assert_eq!(
         names, expected,
-        "stdio transport must expose exactly the 34 YouTrack MCP tools, no more and no fewer"
+        "stdio transport must expose exactly the 35 YouTrack MCP tools, no more and no fewer"
     );
 
     client

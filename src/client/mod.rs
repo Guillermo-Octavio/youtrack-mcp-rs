@@ -199,11 +199,14 @@ impl YouTrackClient {
     /// Sends a `POST` request to `path` with a JSON `body`, discarding
     /// any response body and mapping non-success statuses to
     /// [`YouTrackError`]. Used for endpoints like `/commands` whose
-    /// success response shape isn't needed by callers.
+    /// success response shape isn't needed by callers. `not_found` names
+    /// the resource/id to report when the API returns `404`; pass `None`
+    /// when a `404` should be reported as a generic API error instead.
     pub(crate) async fn post_status_only(
         &self,
         path: &str,
         body: &serde_json::Value,
+        not_found: Option<(&str, &str)>,
     ) -> Result<(), YouTrackError> {
         let response = self.request(Method::POST, path).json(body).send().await?;
         let status = response.status();
@@ -215,6 +218,13 @@ impl YouTrackClient {
         match status.as_u16() {
             401 => Err(YouTrackError::Unauthorized),
             403 => Err(YouTrackError::Forbidden),
+            404 => match not_found {
+                Some((resource, id)) => Err(YouTrackError::NotFound {
+                    resource: resource.to_string(),
+                    id: id.to_string(),
+                }),
+                None => Err(api_error(status.as_u16(), response.text().await.ok())),
+            },
             429 => Err(YouTrackError::RateLimited {
                 retry_after: retry_after(&response),
             }),

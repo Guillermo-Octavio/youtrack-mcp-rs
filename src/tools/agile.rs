@@ -9,6 +9,8 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::render::MoveIssueToSprintResult;
+
 use super::{cursor_skip, tool_error_result, tool_ok_result, ToolServer, DEFAULT_LIMIT};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -40,6 +42,18 @@ pub struct GetSprintRequest {
     /// Agile board id the sprint belongs to.
     pub board_id: String,
     /// Sprint id.
+    pub sprint_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MoveIssueToSprintRequest {
+    /// Issue id or readable id, e.g. `DEMO-1`.
+    pub issue_id: String,
+    /// Agile board id the sprint belongs to, as returned by
+    /// `list_agile_boards`.
+    pub board_id: String,
+    /// Sprint id, as returned by `list_sprints` or `list_agile_boards`'s
+    /// `currentSprint`.
     pub sprint_id: String,
 }
 
@@ -97,6 +111,36 @@ impl ToolServer {
 
         match self.client.get_sprint(&board_id, &sprint_id).await {
             Ok(sprint) => tool_ok_result(&sprint),
+            Err(error) => tool_error_result(error.into()),
+        }
+    }
+
+    #[tool(
+        description = "Add an existing issue to a sprint on an agile board, calling the \
+                        YouTrack REST API directly rather than the `apply_command` \
+                        text parser (which fails on board names containing `|` or `:`). \
+                        `board_id` and `sprint_id` come from `list_agile_boards`/`list_sprints`."
+    )]
+    async fn move_issue_to_sprint(
+        &self,
+        params: Parameters<MoveIssueToSprintRequest>,
+    ) -> CallToolResult {
+        let MoveIssueToSprintRequest {
+            issue_id,
+            board_id,
+            sprint_id,
+        } = params.0;
+
+        match self
+            .client
+            .add_issue_to_sprint(&board_id, &sprint_id, &issue_id)
+            .await
+        {
+            Ok(()) => tool_ok_result(&MoveIssueToSprintResult {
+                issue_id,
+                board_id,
+                sprint_id,
+            }),
             Err(error) => tool_error_result(error.into()),
         }
     }
@@ -199,5 +243,56 @@ mod tests {
         assert_ne!(result.is_error, Some(true));
         let structured = result.structured_content.unwrap();
         assert_eq!(structured["issues"][0]["idReadable"], "DEMO-1");
+    }
+
+    #[tokio::test]
+    async fn move_issue_to_sprint_posts_the_issue_id_to_the_sprint() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/agiles/board-1/sprints/sprint-1/issues"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let tool_server = test_server(&server.uri());
+
+        let result = tool_server
+            .move_issue_to_sprint(Parameters(MoveIssueToSprintRequest {
+                issue_id: "DEMO-1".to_string(),
+                board_id: "board-1".to_string(),
+                sprint_id: "sprint-1".to_string(),
+            }))
+            .await;
+
+        assert_ne!(result.is_error, Some(true));
+        let structured = result.structured_content.unwrap();
+        assert_eq!(structured["issue_id"], "DEMO-1");
+        assert_eq!(structured["board_id"], "board-1");
+        assert_eq!(structured["sprint_id"], "sprint-1");
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body, serde_json::json!({ "id": "DEMO-1" }));
+    }
+
+    #[tokio::test]
+    async fn move_issue_to_sprint_maps_404_to_a_tool_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/agiles/board-1/sprints/missing/issues"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let tool_server = test_server(&server.uri());
+
+        let result = tool_server
+            .move_issue_to_sprint(Parameters(MoveIssueToSprintRequest {
+                issue_id: "DEMO-1".to_string(),
+                board_id: "board-1".to_string(),
+                sprint_id: "missing".to_string(),
+            }))
+            .await;
+
+        assert_eq!(result.is_error, Some(true));
+        let structured = result.structured_content.unwrap();
+        assert_eq!(structured["code"], "not_found");
     }
 }
