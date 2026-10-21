@@ -120,11 +120,15 @@ Verify with `claude --version`.
 **Register the server** with the CLI:
 
 ```bash
-claude mcp add --scope user \
+claude mcp add youtrack --scope user \
   --env YOUTRACK_URL=https://example.myjetbrains.com \
   --env YOUTRACK_TOKEN=perm:xxxxxxxxxxxxxxxxxxxxxxxx \
-  youtrack -- /path/to/youtrack-mcp
+  -- /path/to/youtrack-mcp
 ```
+
+The server name (`youtrack`) must come right after `add`, before any
+`--env` flag: `--env` accepts multiple values, so a name placed after it is
+swallowed as another environment variable and the command fails.
 
 `--scope` controls where the entry is written: `local` (current project
 only, the default), `project` (writes `.mcp.json`, shared with the team via
